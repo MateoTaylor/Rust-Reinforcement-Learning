@@ -52,10 +52,9 @@ class Algorithm:
         rewards = torch.tensor(rewards, dtype=torch.float32).to(self.device)  # [seq_len]
         dones = torch.tensor(dones, dtype=torch.float32).to(self.device)  # [seq_len]
         old_log_probs = torch.stack(old_log_probs).to(self.device)  # [seq_len]
-        values = torch.tensor(values, dtype=torch.float32).to(self.device)  # [seq_len]
+        values = torch.stack([torch.tensor(v).squeeze() for v in values]).to(self.device)  # [seq_len]
         extr_feat_ground_truth = torch.tensor(extr_feat_ground_truth, dtype=torch.float32).to(self.device)  # [seq_len]
-        masks = 1 - dones  # [seq_len]
-        
+        masks = 1 - dones  # [seq_len] 
 
         # Compute advantages and returns
         advantages = self.compute_gae(rewards, masks, values.detach())
@@ -83,7 +82,7 @@ class Algorithm:
             
             # Process each timestep sequentially
             assert(states.size(0) == Config.MAX_STEPS)
-            for t in range(Config.TIMESTEP_SKIPPED, states.size(0)):
+            for t in range(states.size(0)):
                 state_t = states[t]  # [3, 360, 640]
                 action_t = actions[t]  # [num_action_dims]
                 
@@ -91,10 +90,11 @@ class Algorithm:
                     state_t, action_t, hidden
                 )
                 
-                all_log_probs.append(log_prob_t)
-                all_state_values.append(state_value_t)
-                all_entropies.append(entropy_t)
-                all_extr_feat_logits.append(extr_feat_logits)
+                if t >= Config.TIMESTEP_SKIPPED:
+                    all_log_probs.append(log_prob_t)
+                    all_state_values.append(state_value_t.squeeze())
+                    all_entropies.append(entropy_t)
+                    all_extr_feat_logits.append(extr_feat_logits)
 
             # Stack all timesteps
             log_probs = torch.stack(all_log_probs)  # [seq_len - skipped]

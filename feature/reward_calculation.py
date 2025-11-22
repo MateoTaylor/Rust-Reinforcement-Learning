@@ -12,8 +12,8 @@ def calculate_reward(step_info, next_step_info):
 
     # looking at node reward
     if next_player["nodeInView"] == 1:
-        reward += 0.05
-        reward_info["looking_at_node"] = 0.05
+        reward += 0.1
+        reward_info["looking_at_node"] = 0.1
 
     # resource reward
     prev_resources = 0
@@ -26,7 +26,7 @@ def calculate_reward(step_info, next_step_info):
             next_resources += item['amount']
 
     if next_resources > prev_resources:
-        reward += 4
+        reward += 2
         reward_info["resource_gathered"] = 2
 
     # closest node reward
@@ -46,24 +46,18 @@ def calculate_reward(step_info, next_step_info):
             (node_pos["z"] - next_player["position"]["z"]) ** 2) ** 0.5
         if dist < next_closest_dist:
             next_closest_dist = dist
-            
-    # we only bother with closest node rwd if node is within 20 units and visible
-    if next_closest_dist < 20.0 and next_player["nodeInView"] == 1:
-        if next_closest_dist < prev_closest_dist:
-            reward += 0.1
-            reward_info["closest_node"] = 0.1
-        elif next_closest_dist > prev_closest_dist:
-            reward -= 0.1
-            reward_info["closest_node"] = -0.1
+
+    # we only bother with closest node rwd if node is within 3 units and visible
+    if next_closest_dist < 3.0 and next_player["nodeInView"] == 1:
+        reward += 0.1
+        reward_info["closest_node"] = 0.1
 
     # swimming penalty
     if next_player["isSwimming"]:
-        reward -= 0.1
-        reward_info["swimming_penalty"] = -0.1
+        reward -= 0.01
+        reward_info["swimming_penalty"] = -0.01
 
     return reward, reward_info
-
-
 
 """
 example info:

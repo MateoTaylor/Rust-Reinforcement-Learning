@@ -7,6 +7,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+import torchvision.models as models
+
 from conf.conf import Config
 
 class Model(nn.Module):
@@ -17,10 +19,40 @@ class Model(nn.Module):
         hidden_size = Config.HIDDEN_SIZE
         self.input_shape = Config.FEATURE_DIM # should be [3, 360, 640]
         self.action_space = Config.ACTION_SPACE # list of action dimension sizes
-        self.conv_dim = 128 * 4 * 8  # calculated from CNN output size
+        self.conv_dim = 128 * 4 * 8  # ResNet18 outputs 512 channels
         self.extr_feat = 1
 
+        resnet = models.resnet18(weights='DEFAULT')
+        
+        # Freeze early ResNet layers before adding to Sequential
+        # Freeze conv1, bn1, and layer1 (first two main layers)
+        for param in resnet.conv1.parameters():
+            param.requires_grad = False
+        for param in resnet.bn1.parameters():
+            param.requires_grad = False
+        for param in resnet.layer1.parameters():
+            param.requires_grad = False
+        for param in resnet.layer2.parameters():
+            param.requires_grad = False
+        
+        # Remove the classifier (fc) and avgpool layers - keep convolutional layers
+        # ResNet18 outputs [batch, 512, H/32, W/32] before avgpool
+        self.cnn_layers = nn.Sequential(
+            resnet.conv1,
+            resnet.bn1,
+            resnet.relu,
+            resnet.maxpool,
+            resnet.layer1,
+            resnet.layer2,
+            resnet.layer3,
+            resnet.layer4,
+            nn.AdaptiveAvgPool2d((4, 8)),  # [512, H/32, W/32] -> [512, 4, 8]
+            nn.Conv2d(512, 128, kernel_size=1),  # [512, 4, 8] -> [128, 4, 8]
+            nn.ReLU()
+        )
+
         # pass screenshot through a CNN to extract features
+        """
         self.cnn_layers = nn.Sequential(
             nn.Conv2d(3, 16, kernel_size=4, stride=2, ),   # [3,360,640] → [16,179,319]
             nn.ReLU(),
@@ -43,13 +75,12 @@ class Model(nn.Module):
 
             nn.AdaptiveMaxPool2d((4, 8))                 # [128,38,73] → [128,4,8]
         )
-
+        """
         self.feature_classifier = nn.Sequential(
-            nn.Linear(self.conv_dim, 512),
+            nn.Linear(self.conv_dim, 128),
             nn.ReLU(),
-            nn.Linear(512, 512),
-            nn.ReLU(),
-            nn.Linear(512, self.extr_feat) # squash features down to binary
+            nn.Dropout(0.2),
+            nn.Linear(128, self.extr_feat) # squash features down to binary
         )
         
         self.lstm = nn.LSTM(self.conv_dim + self.extr_feat, hidden_size, batch_first=True)
@@ -98,13 +129,17 @@ class Model(nn.Module):
     
     def init_hidden(self):
         # initialize LSTM hidden and cell states to zeros
-        h0 = torch.zeros(1, 1, Config.HIDDEN_SIZE)
-        c0 = torch.zeros(1, 1, Config.HIDDEN_SIZE)
+        device = next(self.parameters()).device
+        h0 = torch.zeros(1, 1, Config.HIDDEN_SIZE, device=device)
+        c0 = torch.zeros(1, 1, Config.HIDDEN_SIZE, device=device)
         return (h0, c0)
-    
     def select_action(self, state, hidden):
         # state: [3, 360, 640]
         state = torch.FloatTensor(state)
+        # Move state to the same device as the model
+        device = next(self.parameters()).device
+        state = state.to(device)
+        policy_logits, value, hidden, _ = self.forward(state, hidden)  # list of [action_dim_i], [1], hidden_state
         policy_logits, value, hidden, _ = self.forward(state, hidden)  # list of [action_dim_i], [1], hidden_state
 
         policy_probs = [F.softmax(logits, dim=-1) for logits in policy_logits]  # list of [action_dim_i]

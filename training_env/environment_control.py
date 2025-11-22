@@ -26,7 +26,7 @@ class EnvironmentControl:
         send_message.reset_env()
         time.sleep(3) # wait for environment to reset
         send_message.give_pickaxe()
-        time.sleep(1)
+        time.sleep(2)
         pdi.press("3") # select pickaxe after respawn
         time.sleep(0.5)
     
@@ -38,12 +38,16 @@ class EnvironmentControl:
         screenshot_tensor = torch.from_numpy(screenshot_array).permute(2, 0, 1).float() / 255.0
         
         # shrink screenshot to desired size
+        # screenshot_tensor = torch.nn.functional.interpolate(
+        #     screenshot_tensor.unsqueeze(0), size=(360, 640), mode='bilinear', align_corners=False
+        # ).squeeze(0)
+
         screenshot_tensor = torch.nn.functional.interpolate(
-            screenshot_tensor.unsqueeze(0), size=(360, 640), mode='bilinear', align_corners=False
+            screenshot_tensor.unsqueeze(0), size=(320, 320), mode='bilinear', align_corners=False
         ).squeeze(0)
 
         # (C, H, W)
-        assert screenshot_tensor.shape == (3, 360, 640), f"Unexpected screenshot shape: {screenshot_tensor.shape}"
+        #assert screenshot_tensor.shape == (3, 360, 640), f"Unexpected screenshot shape: {screenshot_tensor.shape}"
         game_state = send_message.get_state()  # get additional game info to calculate reward
 
         return screenshot_tensor, game_state
@@ -67,6 +71,8 @@ class EnvironmentControl:
             scale = action[4]
             self.move(direction, jump, scale)
         else:
+            if action[0] == 1:
+                time.sleep(0.25)  # wait a bit for swing to process
             direction = action[5]
             scale = action[6]
             self.look(direction, scale)
@@ -77,7 +83,7 @@ class EnvironmentControl:
         info = extra_info
 
         return next_state, done, info
-
+    
     
     def move(self, direction, jump, scale):
         # press movement keys based on direction, jump, and scale

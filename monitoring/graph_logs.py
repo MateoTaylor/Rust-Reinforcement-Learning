@@ -1,3 +1,5 @@
+import numpy as np
+
 import matplotlib.pyplot as plt
 
 def graph_loss():
@@ -92,6 +94,12 @@ def graph_reward():
     # graph total reward
     plt.figure(figsize=(10, 6))
     plt.plot(episodes, total_rewards, label="Total Reward", color='b')
+    
+    # Add regression line
+    z = np.polyfit(episodes, total_rewards, 1)
+    p = np.poly1d(z)
+    plt.plot(episodes, p(episodes), "r--", label=f"Trend (y={z[0]:.4f}x+{z[1]:.4f})")
+    
     plt.xlabel("Episode")
     plt.ylabel("Total Reward")
     plt.title("Total Reward Over Episodes")
