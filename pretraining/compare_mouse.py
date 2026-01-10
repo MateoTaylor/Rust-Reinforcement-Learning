@@ -26,20 +26,23 @@ if __name__ == "__main__":
     mouse_listener.start()
     time.sleep(2)
     for _ in range(10):
+
         # Reset BEFORE the move
         raw_mouse_dx, raw_mouse_dy = 0, 0
         time.sleep(0.3)
-        random_x = randint(-100, 100)
-        random_y = randint(-100, 100)
+        print(f"movement recorded: ({raw_mouse_dx}, {raw_mouse_dy})")
+        # # random_x = randint(-100, 100)
+        # # random_y = randint(-100, 100)
+        # random_x = 10
+        # random_y = 0
 
-        pdi.moveRel(random_x, random_y)
+        # pdi.moveRel(xOffset=random_x, yOffset=random_y, disable_mouse_acceleration=True, relative=True)
 
-        # Give more time for all events to process
+        # # Give more time for all events to process
         time.sleep(0.3)
-        
 
-        dx = raw_mouse_dx
-        dy = raw_mouse_dy
-        print(f"Intended move: ({random_x}, {random_y}), Recorded move: ({dx}, {dy})")
+        # dx = raw_mouse_dx
+        # dy = raw_mouse_dy
+        # print(f"Intended move: ({random_x}, {random_y}), Recorded move: ({dx}, {dy})")
 
     mouse_listener.stop()

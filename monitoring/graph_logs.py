@@ -7,7 +7,7 @@ def graph_loss():
     loss_log.txt format:
     Total Loss: 0.4372, Actor Loss: -0.0022, Critic Loss: 0.3248, Entropy Loss: -0.0704, Feature Loss: 0.1850
     '''
-    log_file = "backups/1-9-Evening/loss_log.txt"
+    log_file = "backups/1-10-Morning/loss_log.txt"
     total_losses = []
     actor_losses = []
     critic_losses = []
@@ -32,7 +32,7 @@ def graph_loss():
     # Plotting loss details
     plt.figure(figsize=(10, 6))
     plt.plot(epochs, actor_losses, label="Actor Loss")
-    # plt.plot(epochs, critic_losses, label="Critic Loss")
+    plt.plot(epochs, critic_losses, label="Critic Loss")
     plt.plot(epochs, entropy_losses, label="Entropy Loss")
     plt.xlabel("Chunk")
     plt.ylabel("Loss")
@@ -56,7 +56,7 @@ def graph_reward():
     training_log.txt format:
     Episode 80 - Total Reward: 0 - Normalized Reward: 0.0 - Details: {'resource_gathered': 0, 'closest_node': 0, 'swimming_penalty': 0, 'looking_at_node': 0}
     '''
-    log_file = "backups/1-9-Evening/training_log.txt"
+    log_file = "backups/1-10-Morning/training_log.txt"
     episodes = []
     rewards = {}
     total_rewards = []

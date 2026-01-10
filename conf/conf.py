@@ -24,7 +24,7 @@ class Config:
         "distance_to_target_reward": 0,
     }
 
-    LEARNING_RATE = 5e-6
+    LEARNING_RATE = 1e-5
     EPISODES = 1000
 
     LSTM_HIDDEN_SIZE = 256
@@ -32,7 +32,7 @@ class Config:
     GAMMA = 0.99
     EPS_CLIP = 0.2    
     LAMDA = 0.95
-    ENTROPY = 0.005
+    ENTROPY = 0.01
 
     GRADIENT_CLIP = 0.5
 

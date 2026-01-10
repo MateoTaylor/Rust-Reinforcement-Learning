@@ -85,7 +85,7 @@ if __name__ == "__main__":
     print("Starting training in 2 seconds...")
     time.sleep(2)  # give user time to switch to the game window
     workflow(
-        model="backups/1-9-Evening/model_episode_50.pth",
-        output_dir="backups/1-9-Evening",
-        start_episode=50
+        model=None,
+        output_dir="backups/1-10-Morning",
+        start_episode=0
         )
