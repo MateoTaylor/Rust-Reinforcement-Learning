@@ -10,9 +10,12 @@ import torch
 import numpy as np
 import training_env.send_message as send_message
 
+# from pywinauto import Application
+
 class EnvironmentControl:
     def __init__(self):
        self.movement_speed = GameConfig.MOVEMENT_SPEED
+    #    self.app = Application(backend="uia").connect(title_re="")
        
         # 0. 2 Swing pickaxe, [No, Yes]
         # 1. 2 Move vs Look, [Move, Look]

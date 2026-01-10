@@ -3,51 +3,41 @@ Config file for PPO agent training
 Author: Mateo Taylor
 '''
 
-class GameConfig:
-    MAX_STEPS = 100
-    MOVEMENT_SPEED = 0.25 # seconds per unit distance
-
-
-class DIM_CONFIG:
-    OBSERVATION_DIM = [None]  
-    # FEATURE_DIM = [3, 360, 640]  # RGB screenshot dimensions (C, H, W) 
-    FEATURE_DIM = [3, 320, 320] # FOR RESNET INPUT
-    ACTION_DIM = [2, 2, 4, 2, 3, 4, 3]
-    # 2 Swing pickaxe, [No, Yes]
-    # 2 Move vs Look, [Move,  Look]
-    # 4 Movement dir, [None, Forward, Left, Right]
-    # 2 Jump, [No, Yes]
-    # 3 Movement scale, [1x, 2x, 3x]
-    # 4 Mouse Movement, [Up, Down, Left, Right]
-    # 3 Mouse movement scale, [15deg, 30deg, 60deg]
+import torch
 
 
 class Config:
+    FEATURE_DIM = [3, 320, 320] # FOR RESNET INPUT
+    ACTION_DIM = [2, 2, 2, 2, 2, 2, 5, 5]
+    
+    INTERVAL = 0.20  # 200 ms per step (5 FPS)
+    CHUNK_LENGTH = 256 # 256 frames @ 5FPS
+    EPISODE_LENGTH = 768  # 2.5~ minutes
+
+    # reward_info = {
+    #     "resource_gathered": 0,
+    #     "closest_node": 0,
+    #     "swimming_penalty": 0,
+    #     "looking_at_node": 0
+    # }
     reward_info = {
-        "resource_gathered": 0,
-        "closest_node": 0,
-        "swimming_penalty": 0,
-        "looking_at_node": 0
+        "distance_to_target_reward": 0,
     }
-    FEATURE_DIM = DIM_CONFIG.FEATURE_DIM
-    CONV_DIM = 0
 
-    TRAINING_FEATURE_CLASSIFIER = True
+    LEARNING_RATE = 5e-6
+    EPISODES = 1000
 
-    LEARNING_RATE = 2.5e-4
-    EPISODES = 2000
-    MAX_STEPS = GameConfig.MAX_STEPS
-
-    ACTION_SPACE = DIM_CONFIG.ACTION_DIM
-    HIDDEN_SIZE = 128
-    TIMESTEP_SKIPPED = 5  # number of initial timesteps to skip in loss calculation due to unreliable hidden state
+    LSTM_HIDDEN_SIZE = 256
 
     GAMMA = 0.99
     EPS_CLIP = 0.2    
     LAMDA = 0.95
-    ENTROPY = 0.05
-    FEATURE_CLASSIFIER_COEF = 0.10
+    ENTROPY = 0.005
 
-    BATCH_SIZE = None
-    EPOCHS = 2
     GRADIENT_CLIP = 0.5
+
+    EPOCHS = 4
+
+    TRANSFORMER_LAYERS = 2
+
+    DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
