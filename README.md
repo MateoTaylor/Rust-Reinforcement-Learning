@@ -5,7 +5,7 @@ Main components of my Rust RL agent. Note this tests on any standard Rust enviro
 I do augment training with game state data, which is collected via TCP with a couple custom C# plugins, (which I might upload later if it seems useful).
 
 **Algorithm**
-The model uses a standard PPO implementation, along with an additional auxilary feature classification head (cross entropy loss)
+The model uses a standard PPO implementation, with cnn + LSTM backbone.
 
 **Model**
 - Resnet18 
