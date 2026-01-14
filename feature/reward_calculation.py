@@ -27,7 +27,7 @@ def calculate_reward(step_info, next_step_info):
             next_resources += item['amount']
 
     if next_resources > prev_resources:
-        reward += 2
+        reward += 0.2
         reward_info["resource_gathered"] = 0.2
 
     # # closest node reward
@@ -48,7 +48,7 @@ def calculate_reward(step_info, next_step_info):
         if dist < next_closest_dist:
             next_closest_dist = dist
     if next_closest_dist < prev_closest_dist and next_closest_dist < 20.0 and next_player["nodeInView"] == 1:
-        reward += 0.1
+        reward += 0.005
         reward_info["closest_node"] = 0.005
     
     # swimming penalty

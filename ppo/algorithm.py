@@ -83,13 +83,14 @@ class Algorithm:
                 for h in hidden:
                     h.requires_grad_(True)
                     
-                log_prob_t, state_value_t, entropy_t, hidden = torch.utils.checkpoint.checkpoint(
-                    self.model.evaluate,
-                    state_t,
-                    action_t,
-                    hidden,
-                    use_reentrant=False
-                )
+                # log_prob_t, state_value_t, entropy_t, hidden = torch.utils.checkpoint.checkpoint(
+                #     self.model.evaluate,
+                #     state_t,
+                #     action_t,
+                #     hidden,
+                #     use_reentrant=False
+                # )
+                log_prob_t, entropy_t, state_value_t, hidden = self.model.evaluate(state_t, action_t, hidden)
 
                 all_log_probs.append(log_prob_t)
                 all_state_values.append(state_value_t.squeeze())

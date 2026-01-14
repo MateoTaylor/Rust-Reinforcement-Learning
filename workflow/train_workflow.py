@@ -4,7 +4,7 @@ Main training workflow for the PPO agent
 
 import time
 from conf.conf import Config
-from feature.reward_calculation import calculate_reward, RewardNormalizer
+from feature.reward_calculation import calculate_reward
 from ppo.algorithm import Algorithm
 from model.model import Model
 from training_env.environment_control_updated import EnvironmentControl
@@ -15,7 +15,10 @@ from monitoring.monitoring import Training_Logger
 def workflow(model=None, output_dir="backups/new", start_episode=0):
     env = EnvironmentControl()
     agent = Algorithm(Model(model))
-    
+
+    # checkpoint = torch.load("checkpoint_0.pth", map_location=Config.DEVICE)
+    # agent.model.load_state_dict(checkpoint['model_state_dict'])
+
     print("Config.DEVICE:", Config.DEVICE)
     print(torch.cuda.is_available())
     
@@ -24,12 +27,13 @@ def workflow(model=None, output_dir="backups/new", start_episode=0):
     os.makedirs(output_dir, exist_ok=True)
 
     logger = Training_Logger(start_episode, output_dir)
-    reward_norm = RewardNormalizer()
 
     for episode in range(start_episode, Config.EPISODES):
         env.reset()
         step_info = []
         state, info = env.step([0] * len(Config.ACTION_DIM))
+        state = state.view(1, *state.shape) # broadcast to [1, C, H, W]
+        
         total_reward = 0
         total_reward_info = Config.reward_info.copy()
         total_normalized_reward = 0
@@ -44,14 +48,14 @@ def workflow(model=None, output_dir="backups/new", start_episode=0):
 
             # next_state is a PIL image converted, done is a bool,
             # next_info is extra info for reward calculation
+            
             next_state, next_info = env.step(action)
+            next_state = next_state.view(1, *next_state.shape) # broadcast to [1, C, H, W]
             done = (step + 1) % Config.CHUNK_LENGTH == 0
 
             reward, reward_info = calculate_reward(info, next_info)
-            normalized_reward = reward_norm.normalize(reward, done)
             #log total reward info
             total_reward += reward
-            total_normalized_reward += normalized_reward
             for key, value in reward_info.items():
                 total_reward_info[key] += value
 
@@ -85,7 +89,7 @@ if __name__ == "__main__":
     print("Starting training in 2 seconds...")
     time.sleep(2)  # give user time to switch to the game window
     workflow(
-        model=None,
-        output_dir="backups/1-10-Morning",
-        start_episode=0
+        model="backups/1-14-Morning/model_episode_85.pth",
+        output_dir="backups/1-14-Morning",
+        start_episode=85
         )

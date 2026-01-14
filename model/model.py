@@ -63,33 +63,43 @@ class Model(nn.Module):
         self.spatial_softmax = SpatialSoftmax(height=38, width=38)
 
         # LSTM
-        self.lstm = nn.LSTM(128, 256, batch_first=True)
+        self.lstm = nn.LSTM(192, 256, batch_first=True)
 
         # Actor head
         self.policy_heads = nn.ModuleList([nn.Linear(256, action_dim) for action_dim in self.action_space])
+        self.value_head = nn.Linear(256, 1)
+
+        if pretrained and isinstance(pretrained, str):
+            pretrained = torch.load(pretrained, map_location=Config.DEVICE)
+            self.load_state_dict(pretrained)
+
+        #  freeze everything except value head until critic loss stabilizes.
+        # for param in self.parameters():
+        #     param.requires_grad = False
+        # self.value_head.weight.requires_grad = True
+        # self.value_head.bias.requires_grad = True
 
     def forward(self, x, hidden=None):
-        # x input: [Batch,  3, 320, 320]
+        # x input: [1, 3, 320, 320]
 
         # compress x into just 250~ frames
-        # Backbone CNN -> [Batch*Seq_Len, 128, 38, 38]
-
-        # x = torch.utils.checkpoint.checkpoint(
-        #     self.cnn,
-        #     x,
-        #     use_reentrant=False
-        #     )
         x = self.cnn(x)
 
-        x = self.spatial_softmax(x) # -> [Batch, 128]
-        
+        x_gap = torch.mean(x, dim=[2, 3]) # global avg pool [Batch*Seq_Len, 64]
+
+        x = self.spatial_softmax(x) # -> [Batch*Seq_Len, 128]
+
+        x = torch.cat((x_gap, x), dim=1) # [Batch*Seq_Len, 192]
+
         # pass through lstm
-        x = x.unsqueeze(1)  # add sequence dimension: [Batch, 1, 128]
+        x = x.unsqueeze(1)  # [add batch dim, 1, 192]
         x, hidden = self.lstm(x, hidden)
-        x = x.squeeze(1)  # remove sequence dimension
+        x = x.squeeze(1)  # [add batch dim, 256]
+
+        value = self.value_head(x)
 
         x_logits = [policy_head(x) for policy_head in self.policy_heads]
-        return x_logits, 1, hidden
+        return x_logits, value, hidden
   
     def init_hidden(self):
         # initialize LSTM hidden and cell states to zeros on the specified device
@@ -110,14 +120,21 @@ class Model(nn.Module):
         action = [d.sample() for d in dist]  # list of scalars
         action = torch.stack(action)  # [num_action_dims]
 
-        # now mask pickaxe swing until animation is done
-        if self.pickaxe_mask > 0:
-            action[5] = 0.0
-            self.pickaxe_mask -= 1
-        elif action[5] == 1:
-            self.pickaxe_mask = 5
-
         log_probs = [d.log_prob(a) for d, a in zip(dist, action)]  # list of scalars
         log_prob = torch.stack(log_probs).sum()  # scalar
 
         return action, log_prob, value, hidden  # [num_action_dims], scalar, [1], hidden_state
+    
+    def evaluate(self, state, action, hidden):
+        # state: [3, 360, 640]
+        policy_logits, value, hidden = self.forward(state, hidden)  # list of [action_dim_i], [1], hidden_state
+
+        policy_probs = [F.softmax(logits, dim=-1) for logits in policy_logits]  # list of [action_dim_i]
+        dist = [torch.distributions.Categorical(prob) for prob in policy_probs]
+
+        log_probs = [d.log_prob(a) for d, a in zip(dist, action)]  # list of scalars
+        log_prob = torch.stack(log_probs).sum()  # scalar
+
+        entropy = torch.stack([d.entropy() for d in dist]).sum()  # scalar
+
+        return log_prob, entropy, value, hidden  # scalar, scalar, [1], hidden_state

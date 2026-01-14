@@ -12,19 +12,19 @@ class Config:
     
     INTERVAL = 0.20  # 200 ms per step (5 FPS)
     CHUNK_LENGTH = 256 # 256 frames @ 5FPS
-    EPISODE_LENGTH = 768  # 2.5~ minutes
+    EPISODE_LENGTH = 256  # 2.5~ minutes
 
-    # reward_info = {
-    #     "resource_gathered": 0,
-    #     "closest_node": 0,
-    #     "swimming_penalty": 0,
-    #     "looking_at_node": 0
-    # }
     reward_info = {
-        "distance_to_target_reward": 0,
+        "resource_gathered": 0,
+        "closest_node": 0,
+        "swimming_penalty": 0,
+        "looking_at_node": 0
     }
+    # reward_info = {
+    #     "distance_to_target_reward": 0,
+    # }
 
-    LEARNING_RATE = 1e-5
+    LEARNING_RATE = 1e-4
     EPISODES = 1000
 
     LSTM_HIDDEN_SIZE = 256
@@ -32,7 +32,7 @@ class Config:
     GAMMA = 0.99
     EPS_CLIP = 0.2    
     LAMDA = 0.95
-    ENTROPY = 0.01
+    ENTROPY = 0.004
 
     GRADIENT_CLIP = 0.5
 

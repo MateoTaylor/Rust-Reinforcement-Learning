@@ -61,7 +61,7 @@ class Model(nn.Module):
         self.value_head = nn.Linear(256, 1)
         if pretrained and isinstance(pretrained, str):
             pretrained = torch.load(pretrained, map_location=Config.DEVICE)
-            self.load_state_dict(pretrained)\
+            self.load_state_dict(pretrained)
             
         self.pickaxe_mask = 0
 
