@@ -4,7 +4,7 @@ import pandas as pd
 '''
 bin mouse dx and dy into 9 discrete categories:
 
-> 100, 50-100, 10-50, 3-10, 3-(-3), -3--10, -10--50, -50--100, < -100
+>50, 10-50, 0, -10--50, -50<
 '''
 
 if __name__ == "__main__":
@@ -13,10 +13,9 @@ if __name__ == "__main__":
     binned_dx = []
     binned_dy = []
     
-    bins = [float('-inf'), -100, -50, -10, -3, 3, 10, 50, 100, float('inf')]
+    bins = [float('-inf'), -50, -5, 5, 50, float('inf')]
     df['modified_delta_x'] = pd.cut(df['mouse_delta_x'], bins=bins, labels=False, right=False)
     df['modified_delta_y'] = pd.cut(df['mouse_delta_y'], bins=bins, labels=False, right=False)
-
 
     # now cleanup the array and get it ready for numpy
     df.drop(columns=["frame", 'mouse_delta_x', 'mouse_delta_y'], inplace=True)

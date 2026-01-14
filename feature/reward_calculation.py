@@ -1,43 +1,64 @@
 from conf.conf import Config
 import numpy as np
 
-class RewardNormalizer:
-    def __init__(self, gamma=0.99, epsilon=1e-8):
-        self.gamma = gamma
-        self.epsilon = epsilon
-        self.ret = 0
-        # Running Mean and Variance tracking
-        self.mean = 0
-        self.var = 1
-        self.count = epsilon
+def calculate_reward(step_info, next_step_info):
+    '''
+    Calculate the reward for a given step based on the step information.
+    '''
+    reward = 0 
+    prev_player = step_info['players'][0]
+    next_player = next_step_info['players'][0]
 
-    def update_stats(self, x):
-        # Standard Welford's algorithm for running variance
-        batch_mean = np.mean(x)
-        batch_var = np.var(x)
-        batch_count = 1 # We update one step at a time
-        
-        delta = batch_mean - self.mean
-        tot_count = self.count + batch_count
-        self.mean = self.mean + delta * batch_count / tot_count
-        m_a = self.var * self.count
-        m_b = batch_var * batch_count
-        M2 = m_a + m_b + np.square(delta) * self.count * batch_count / tot_count
-        self.var = M2 / tot_count
-        self.count = tot_count
+    reward_info = Config.reward_info.copy()
+    
+    # looking at node reward
+    if next_player["nodeInView"] == 1:
+        reward += 0.0025
+        reward_info["looking_at_node"] = 0.0025
 
-    def normalize(self, reward, done):
-        # 1. Update the discounted return for the current episode
-        self.ret = self.ret * self.gamma + reward
-        # 2. Update the running statistics with the new return
-        self.update_stats(np.array([self.ret]))
-        # 3. Scale the reward by the standard deviation of returns
-        # This keeps the Critic's targets within a stable range
-        scaled_reward = reward / (np.sqrt(self.var) + self.epsilon)
-        if done:
-            self.ret = 0 # Reset return at end of episode
-        return scaled_reward
+    # resource reward
+    prev_resources = 0
+    for item in prev_player['items']:
+        if item["displayName"] == "Stone" or item["displayName"] == "Metal Ore" or item["displayName"] == "Sulfur Ore":
+            prev_resources += item['amount']
+    next_resources = 0
+    for item in next_player['items']:
+        if item["displayName"] == "Stone" or item["displayName"] == "Metal Ore" or item["displayName"] == "Sulfur Ore":
+            next_resources += item['amount']
 
+    if next_resources > prev_resources:
+        reward += 2
+        reward_info["resource_gathered"] = 0.2
+
+    # # closest node reward
+    prev_closest_dist = float('inf')
+    next_closest_dist = float('inf')
+    for node in step_info["nodes"]: 
+        node_pos = node["position"]
+        dist = ((node_pos["x"] - prev_player["position"]["x"]) ** 2 +
+            (node_pos["y"] - prev_player["position"]["y"]) ** 2 +
+            (node_pos["z"] - prev_player["position"]["z"]) ** 2) ** 0.5
+        if dist < prev_closest_dist:
+            prev_closest_dist = dist
+    for node in next_step_info["nodes"]: 
+        node_pos = node["position"]
+        dist = ((node_pos["x"] - next_player["position"]["x"]) ** 2 +
+            (node_pos["y"] - next_player["position"]["y"]) ** 2 +
+            (node_pos["z"] - next_player["position"]["z"]) ** 2) ** 0.5
+        if dist < next_closest_dist:
+            next_closest_dist = dist
+    if next_closest_dist < prev_closest_dist and next_closest_dist < 20.0 and next_player["nodeInView"] == 1:
+        reward += 0.1
+        reward_info["closest_node"] = 0.005
+    
+    # swimming penalty
+    # if next_player["isSwimming"]:
+    #     reward -= 0.01
+    #     reward_info["swimming_penalty"] = -0.01
+
+    return reward, reward_info
+
+'''
 def calculate_reward(step_info, next_step_info):
     reward = 0
     prev_player = step_info['players'][0]
@@ -55,68 +76,7 @@ def calculate_reward(step_info, next_step_info):
     reward += (prev_dist - next_dist) * 0.01  # reward for getting closer to target
     reward_info = {"distance_to_target_reward": (prev_dist - next_dist) * 0.1}
     return reward, reward_info
-
-# def calculate_reward(step_info, next_step_info):
-#     '''
-#     Calculate the reward for a given step based on the step information.
-#     '''
-#     reward = 0 
-#     prev_player = step_info['players'][0]
-#     next_player = next_step_info['players'][0]
-
-#     reward_info = Config.reward_info.copy()
-#     #print(step_info)
-    
-#     # looking at node reward
-#     if next_player["nodeInView"] == 1:
-#         reward += 0.05
-#         reward_info["looking_at_node"] = 0.0025
-
-#     # resource reward
-#     prev_resources = 0
-#     for item in prev_player['items']:
-#         if item["displayName"] == "Stone" or item["displayName"] == "Metal Ore" or item["displayName"] == "Sulfur Ore":
-#             prev_resources += item['amount']
-#     next_resources = 0
-#     for item in next_player['items']:
-#         if item["displayName"] == "Stone" or item["displayName"] == "Metal Ore" or item["displayName"] == "Sulfur Ore":
-#             next_resources += item['amount']
-
-#     if next_resources > prev_resources:
-#         reward += 2
-#         reward_info["resource_gathered"] = 0.2
-
-#     # # closest node reward
-#     prev_closest_dist = float('inf')
-#     next_closest_dist = float('inf')
-#     for node in step_info["nodes"]: 
-#         node_pos = node["position"]
-#         dist = ((node_pos["x"] - prev_player["position"]["x"]) ** 2 +
-#             (node_pos["y"] - prev_player["position"]["y"]) ** 2 +
-#             (node_pos["z"] - prev_player["position"]["z"]) ** 2) ** 0.5
-#         if dist < prev_closest_dist:
-#             prev_closest_dist = dist
-#     for node in next_step_info["nodes"]: 
-#         node_pos = node["position"]
-#         dist = ((node_pos["x"] - next_player["position"]["x"]) ** 2 +
-#             (node_pos["y"] - next_player["position"]["y"]) ** 2 +
-#             (node_pos["z"] - next_player["position"]["z"]) ** 2) ** 0.5
-#         if dist < next_closest_dist:
-#             next_closest_dist = dist
-#     # print(f"Prev closest: {prev_closest_dist}, Next closest: {next_closest_dist}")
-#     # print(f"Node in view: {next_player['nodeInView']}")
-#     if next_closest_dist < prev_closest_dist and next_closest_dist < 20.0 and next_player["nodeInView"] == 1:
-#         # print("Closer to node and node in view" )
-#         reward += 0.1
-#         reward_info["closest_node"] = 0.005
-    
-
-#     # swimming penalty
-#     # if next_player["isSwimming"]:
-#     #     reward -= 0.01
-#     #     reward_info["swimming_penalty"] = -0.01
-
-#     return reward, reward_info
+'''
 
 """
 example info:

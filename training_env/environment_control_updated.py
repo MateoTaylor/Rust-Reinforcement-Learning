@@ -11,6 +11,7 @@ from torchvision import transforms
 import cv2
 from mss import mss
 import win32gui
+
 pdi.PAUSE = 0.005
 
 class EnvironmentControl:
@@ -41,7 +42,7 @@ class EnvironmentControl:
         screenshot = np.array(self.sct.grab(monitor))
 
         # Match pretraining pipeline: BGRA → BGR → RGB
-        screenshot = cv2.cvtColor(screenshot, cv2.COLOR_BGR2RGB)   # Then to RGB (like .convert("RGB") does)
+        screenshot = cv2.cvtColor(screenshot, cv2.COLOR_BGRA2RGB)
         screenshot = cv2.resize(screenshot, (320, 320))  # resize to 320x320
         
         # Convert to tensor - transforms.ToTensor() does permute + divide by 255

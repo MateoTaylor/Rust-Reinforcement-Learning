@@ -10,6 +10,8 @@ from mss import mss
 from pynput import mouse, keyboard
 from PIL import Image
 import numpy as np
+from feature.reward_calculation import calculate_reward
+import training_env.send_message as send_message
 
 SAVE_DIR = "pretraining/"
 FRAME_DIR = "pretraining/imitation_frames/"
@@ -63,6 +65,7 @@ if __name__ == "__main__":
     print("Starting in 10 seconds... Ctrl+C to stop and save.")    
     time.sleep(10) # 10 sec to swap to user window
     print("Recording!")
+    old_state = send_message.get_state()
 
     with mss() as sct:
         monitor = sct.monitors[1]  # primary monitor
@@ -78,9 +81,13 @@ if __name__ == "__main__":
 
                 # Capture screen
                 img = np.array(sct.grab(monitor))
-                img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
-                img = cv2.resize(img, (640, 640))
-                
+                img = cv2.cvtColor(img, cv2.COLOR_BGRA2RGB)
+                img = cv2.resize(img, (320, 320))
+
+                new_state = send_message.get_state()
+                reward, reward_info = calculate_reward(old_state, new_state)
+                old_state = new_state
+
                 # Save frame
                 frame_filename = os.path.join(FRAME_DIR, f"frame_{frame_count:06d}.jpg")
                 success = cv2.imwrite(frame_filename, img, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
@@ -99,6 +106,7 @@ if __name__ == "__main__":
                     "left_click": current_keys["left_click"],
                     "mouse_delta_x": dx,
                     "mouse_delta_y": dy,
+                    "reward": reward
                 }
                 data_log.append(log_entry)
 
