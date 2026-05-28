@@ -20,10 +20,10 @@ class EnvironmentControl:
        self.sct = mss()
     def reset(self):
         send_message.reset_env()
-        time.sleep(3) # wait for environment to reset
+        time.sleep(2) # wait for environment to reset
         send_message.give_pickaxe()
-        time.sleep(2)
-        pdi.press("3") # select pickaxe after respawn
+        time.sleep(3)
+        pdi.press("3", duration=1) # select pickaxe after respawn
         time.sleep(0.5)
     
     def is_rust_focused(self):
@@ -42,8 +42,8 @@ class EnvironmentControl:
         screenshot = np.array(self.sct.grab(monitor))
 
         # Match pretraining pipeline: BGRA → BGR → RGB
-        screenshot = cv2.cvtColor(screenshot, cv2.COLOR_BGRA2BGR)
-        screenshot = cv2.resize(screenshot, (320, 320))  # resize to 320x320
+        screenshot = cv2.cvtColor(screenshot, cv2.COLOR_BGRA2RGB)
+        screenshot = cv2.resize(screenshot, (640, 640))  # resize to 640x640
         
         # Convert to tensor - transforms.ToTensor() does permute + divide by 255
         transform = transforms.ToTensor()
@@ -64,19 +64,11 @@ class EnvironmentControl:
             raise Exception("Rust window out of focus)")
         if action[0] == 1: pdi.keyDown('w')
         else: pdi.keyUp('w')
-        if action[1] == 1: pdi.keyDown('a')
-        else: pdi.keyUp('a')
-        if action[2] == 1: pdi.keyDown('s')
-        else: pdi.keyUp('s')
-        if action[3] == 1: pdi.keyDown('d')
-        else: pdi.keyUp('d')
-        if action[4] == 1: pdi.keyDown('space')
-        else: pdi.keyUp('space')
-        if action[5] == 1: pdi.click()
-        
-        mouse_movement_scale = [-50, -10, 0, 10, 50] # scale for mouse movement
-        mouse_dx = mouse_movement_scale[action[6]]*4
-        mouse_dy = mouse_movement_scale[action[7]]*2
+        if action[1] == 1: pdi.mouseDown()
+        else: pdi.mouseUp()
+        mouse_movement_conversion = {1: -150, 2: 150, 0: 0} # convert from binned movement back to actual movement
+        mouse_dx = mouse_movement_conversion[action[2]]
+        mouse_dy = mouse_movement_conversion[action[3]]
         pdi.moveRel(mouse_dx, mouse_dy, relative=True)
         # after executing action, get new state and return it with reward info
         next_state, extra_info = self.get_state()
@@ -87,7 +79,3 @@ class EnvironmentControl:
     def pause(self):
         # lift up all keys
         pdi.keyUp('w')
-        pdi.keyUp('a')
-        pdi.keyUp('s')
-        pdi.keyUp('d')
-        pdi.keyUp('space')

@@ -1,140 +1,150 @@
 '''
-basic model + Spatial Softmax + LSTM layer
+basic model + Spatial Softmax + GRU layer
 Refactored by Gemini
 '''
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np # Needed for meshgrid
+
 from conf.conf import Config
+from ultralytics import YOLO
 
-class SpatialSoftmax(nn.Module):
-    def __init__(self, height, width, temperature=None):
-        super(SpatialSoftmax, self).__init__()
-        self.height = height
-        self.width = width
-        self.temperature = temperature or nn.Parameter(torch.ones(1))
-
-        # Create normalized coordinate grid [-1, 1]
-        pos_x, pos_y = np.meshgrid(
-            np.linspace(-1, 1, width),
-            np.linspace(-1, 1, height)
-        )
-        # Register as buffers (not trainable, but move to device with model)
-        self.register_buffer('pos_x', torch.from_numpy(pos_x.reshape(height * width)).float())
-        self.register_buffer('pos_y', torch.from_numpy(pos_y.reshape(height * width)).float())
-
-    def forward(self, feature_map):
-        # Input: [Batch, Channels, Height, Width]
-        b, c, h, w = feature_map.shape
-
-        # Flatten spatial dims: [B, C, H*W]
-        flat = feature_map.view(b, c, -1)
-
-        # Softmax over spatial dimensions (H*W) to find "center of mass"
-        softmax_attention = F.softmax(flat / self.temperature, dim=2)
-
-        # Calculate expected X and Y coordinates
-        expected_x = torch.sum(self.pos_x * softmax_attention, dim=2, keepdim=True)
-        expected_y = torch.sum(self.pos_y * softmax_attention, dim=2, keepdim=True)
-
-        # Output: [Batch, Channels * 2] (Interleave X, Y)
-        return torch.cat((expected_x, expected_y), dim=2).view(b, -1)
 
 class Model(nn.Module):
 
-    def __init__(self, pretrained=None):
-        super(Model, self).__init__()
-        self.action_space = Config.ACTION_DIM
-        self.pickaxe_mask = 0
+  def __init__(self, pretrained=None):
+    super(Model, self).__init__()
 
-        # CNN Backbone
-        self.cnn = nn.Sequential(
-            nn.Conv2d(3, 32, kernel_size=8, stride=4, padding=0), # [320, 320, 3] -> []
-            nn.ReLU(),
-            nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=0),
-            nn.ReLU(),
-            nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(),
-        )
+    yolo_wrapper = YOLO("model/best.pt", verbose=False, task="detect")
+    self.yolo = yolo_wrapper.model
+    self.action_space = Config.ACTION_DIM
 
-        # Spatial Softmax
-        self.spatial_softmax = SpatialSoftmax(height=38, width=38)
+    for param in self.yolo.parameters():
+      param.requires_grad = False
 
-        # LSTM
-        self.lstm = nn.LSTM(192, 256, batch_first=True)
+    self.yolo_features = None
 
-        # Actor head
-        self.policy_heads = nn.ModuleList([nn.Linear(256, action_dim) for action_dim in self.action_space])
-        self.value_head = nn.Linear(256, 1)
+    def hook_fn(module, input, output):
+      self.yolo_features = output
 
-        if pretrained and isinstance(pretrained, str):
-            pretrained = torch.load(pretrained, map_location=Config.DEVICE)
-            self.load_state_dict(pretrained)
+    self.yolo.model[22].register_forward_hook(hook_fn)
 
-        #  freeze everything except value head until critic loss stabilizes.
-        # for param in self.parameters():
-        #     param.requires_grad = False
-        # self.value_head.weight.requires_grad = True
-        # self.value_head.bias.requires_grad = True
+    self.channel_squish = nn.Sequential(
+      nn.Conv2d(in_channels=256, out_channels=128, kernel_size=1),
+      nn.BatchNorm2d(128),
+      nn.SiLU(),
+    )
+    self.channel_squish.requires_grad_(False)
+    self.flattened_dim = 128 * 20 * 20
 
-    def forward(self, x, hidden=None):
-        # x input: [1, 3, 320, 320]
+    self.gru = nn.GRU(self.flattened_dim, Config.LSTM_HIDDEN_SIZE, batch_first=True)
 
-        # compress x into just 250~ frames
-        x = self.cnn(x)
+    self.policy_heads = nn.ModuleList(
+      [nn.Linear(Config.LSTM_HIDDEN_SIZE, action_dim) for action_dim in self.action_space]
+    )
+    self.value_head = nn.Linear(Config.LSTM_HIDDEN_SIZE, 1)
+    self.policy_training_enabled = True
 
-        x_gap = torch.mean(x, dim=[2, 3]) # global avg pool [Batch*Seq_Len, 64]
+    if pretrained and isinstance(pretrained, str):
+      pretrained_state = torch.load(pretrained, map_location=Config.DEVICE)
+      self.load_state_dict(pretrained_state)
 
-        x = self.spatial_softmax(x) # -> [Batch*Seq_Len, 128]
+  def set_trainable_components(self, train_policy: bool):
+    self.policy_training_enabled = train_policy
 
-        x = torch.cat((x_gap, x), dim=1) # [Batch*Seq_Len, 192]
+    self.channel_squish.requires_grad_(train_policy)
+    self.gru.requires_grad_(train_policy)
+    self.policy_heads.requires_grad_(train_policy)
+    self.value_head.requires_grad_(True)
 
-        # pass through lstm
-        x = x.unsqueeze(1)  # [add batch dim, 1, 192]
-        x, hidden = self.lstm(x, hidden)
-        x = x.squeeze(1)  # [add batch dim, 256]
+  def _prepare_input(self, x):
+    if x.dim() == 3:
+      return x.unsqueeze(0).unsqueeze(0)
+    if x.dim() == 4:
+      return x.unsqueeze(1)
+    if x.dim() == 5:
+      return x
+    raise ValueError(f"Expected 3D, 4D, or 5D input, got shape {tuple(x.shape)}")
 
-        value = self.value_head(x)
+  def init_hidden(self, batch_size=1, device=None):
+    device = device or Config.DEVICE
+    return torch.zeros(1, batch_size, Config.LSTM_HIDDEN_SIZE, device=device)
 
-        x_logits = [policy_head(x) for policy_head in self.policy_heads]
-        return x_logits, value, hidden
-  
-    def init_hidden(self):
-        # initialize LSTM hidden and cell states to zeros on the specified device
-        h0 = torch.zeros(1, 1, 256)# [num_layers=1, batch=1, hidden_size=256]
-        c0 = torch.zeros(1, 1, 256)
-        return (h0, c0)
-  
-    def select_action(self, state, hidden):
-        # state: [3, 360, 640]
-        # Get the device from the model's parameters
-        state = state.to(Config.DEVICE)
-        hidden = (hidden[0].to(Config.DEVICE), hidden[1].to(Config.DEVICE))
-        policy_logits, value, hidden = self.forward(state, hidden)  # list of [action_dim_i], [1], hidden_state
+  def forward(self, x, hidden=None):
+    device = next(self.parameters()).device
+    x = x.to(device)
 
-        policy_probs = [F.softmax(logits, dim=-1) for logits in policy_logits]  # list of [action_dim_i]
-        dist = [torch.distributions.Categorical(prob) for prob in policy_probs]
+    if hidden is not None:
+      if isinstance(hidden, tuple):
+        hidden = tuple(h.to(device) for h in hidden)
+      else:
+        hidden = hidden.to(device)
 
-        action = [d.sample() for d in dist]  # list of scalars
-        action = torch.stack(action)  # [num_action_dims]
+    x = self._prepare_input(x)
+    batch_size, sequence_length, channels, height, width = x.shape
 
-        log_probs = [d.log_prob(a) for d, a in zip(dist, action)]  # list of scalars
-        log_prob = torch.stack(log_probs).sum()  # scalar
+    x_reshaped_for_yolo = x.reshape(batch_size * sequence_length, channels, height, width)
 
-        return action, log_prob, value, hidden  # [num_action_dims], scalar, [1], hidden_state
-    
-    def evaluate(self, state, action, hidden):
-        # state: [3, 360, 640]
-        policy_logits, value, hidden = self.forward(state, hidden)  # list of [action_dim_i], [1], hidden_state
+    self.yolo_features = None
+    yolo_generator = self.yolo(x_reshaped_for_yolo)
+    for _ in yolo_generator:
+      pass
 
-        policy_probs = [F.softmax(logits, dim=-1) for logits in policy_logits]  # list of [action_dim_i]
-        dist = [torch.distributions.Categorical(prob) for prob in policy_probs]
+    if self.yolo_features is None:
+      raise RuntimeError("YOLO hook did not capture features during forward pass")
 
-        log_probs = [d.log_prob(a) for d, a in zip(dist, action)]  # list of scalars
-        log_prob = torch.stack(log_probs).sum()  # scalar
+    features = self.yolo_features.clone()
+    features = self.channel_squish(features)
 
-        entropy = torch.stack([d.entropy() for d in dist]).sum()  # scalar
+    features = features.reshape(batch_size, sequence_length, -1)
+    features, hidden = self.gru(features, hidden)
 
-        return log_prob, entropy, value, hidden  # scalar, scalar, [1], hidden_state
+    value = self.value_head(features)
+    policy_logits = [policy_head(features) for policy_head in self.policy_heads]
+    return policy_logits, value, hidden
+
+  def select_action(self, x, hidden=None, stochastic=False, temperature=1.0):
+    with torch.no_grad():
+      action_logits, value, hidden = self.forward(x, hidden=hidden)
+      actions = []
+      log_probs = []
+
+      for logits in action_logits:
+        scaled_logits = logits / max(temperature, 1e-6)
+        final_step_logits = scaled_logits[:, -1, :]
+        dist = torch.distributions.Categorical(logits=final_step_logits)
+
+        if stochastic:
+          action = dist.sample()
+        else:
+          action = torch.argmax(final_step_logits, dim=-1)
+
+        actions.append(action.view(-1)[0])
+        log_probs.append(dist.log_prob(action).view(-1)[0])
+
+      action = torch.stack(actions)
+      log_prob = torch.stack(log_probs).sum()
+      value = value[:, -1, :].view(-1)[0]
+
+    return action, log_prob, value, hidden
+
+  def evaluate(self, state, action, hidden=None):
+    policy_logits, value, hidden = self.forward(state, hidden)
+
+    batch_size, sequence_length = value.shape[:2]
+    action = action.to(value.device).reshape(batch_size, sequence_length, -1).long()
+
+    log_probs = []
+    entropies = []
+
+    for head_index, logits in enumerate(policy_logits):
+      dist = torch.distributions.Categorical(logits=logits)
+      current_action = action[..., head_index]
+      log_probs.append(dist.log_prob(current_action))
+      entropies.append(dist.entropy())
+
+    log_prob = torch.stack(log_probs, dim=-1).sum(dim=-1)
+    entropy = torch.stack(entropies, dim=-1).sum(dim=-1)
+    value = value.squeeze(-1)
+    return log_prob, entropy, value, hidden

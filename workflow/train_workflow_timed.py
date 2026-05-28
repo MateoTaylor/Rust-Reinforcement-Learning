@@ -38,7 +38,6 @@ def workflow(model=None, output_dir="backups/new"):
         
         hidden = agent.model.init_hidden()  # Initialize hidden state from model
         for step in range(Config.EPISODE_LENGTH):
-            hidden = tuple(h.detach() for h in hidden)
             start_time = time.time()
             
             # selected action, log probability over all actions, and value estimate from the agent
@@ -63,20 +62,18 @@ def workflow(model=None, output_dir="backups/new"):
                 total_reward_info[key] += value
 
             # collect step info for learning after the episode
-            step_info.append((state, action, reward, log_prob, value))
+            step_info.append((state.detach(), action.detach(), reward, log_prob.detach(), value))
             state = next_state  
             info = next_info     
-            
-            if (step + 1) % Config.CHUNK_LENGTH == 0:
-                hidden = agent.learn(step_info, next_state, hidden)
-                step_info = []
             elapsed = time.time() - start_time
             time_to_wait = Config.INTERVAL - elapsed
             print(f"Total step time: {elapsed:.4f}s")
             if time_to_wait > 0:
                 time.sleep(time_to_wait)
 
-                
+        env.pause()
+        agent.learn(step_info, next_state, hidden, hidden, None)
+
         print(f"Episode {episode} learning complete.")
         # Log episode information
         monitor_episode(episode, total_reward, total_reward_info)

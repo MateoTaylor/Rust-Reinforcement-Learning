@@ -13,8 +13,8 @@ def calculate_reward(step_info, next_step_info):
     
     # looking at node reward
     if next_player["nodeInView"] == 1:
-        reward += 0.0025
-        reward_info["looking_at_node"] = 0.0025
+        reward += 0.001
+        reward_info["looking_at_node"] = 0.001
 
     # resource reward
     prev_resources = 0
@@ -27,34 +27,35 @@ def calculate_reward(step_info, next_step_info):
             next_resources += item['amount']
 
     if next_resources > prev_resources:
-        reward += 0.2
-        reward_info["resource_gathered"] = 0.2
+        reward += 0.1
+        reward_info["resource_gathered"] = 0.1
 
-    # # closest node reward
-    prev_closest_dist = float('inf')
-    next_closest_dist = float('inf')
-    for node in step_info["nodes"]: 
-        node_pos = node["position"]
-        dist = ((node_pos["x"] - prev_player["position"]["x"]) ** 2 +
-            (node_pos["y"] - prev_player["position"]["y"]) ** 2 +
-            (node_pos["z"] - prev_player["position"]["z"]) ** 2) ** 0.5
-        if dist < prev_closest_dist:
-            prev_closest_dist = dist
-    for node in next_step_info["nodes"]: 
-        node_pos = node["position"]
-        dist = ((node_pos["x"] - next_player["position"]["x"]) ** 2 +
-            (node_pos["y"] - next_player["position"]["y"]) ** 2 +
-            (node_pos["z"] - next_player["position"]["z"]) ** 2) ** 0.5
-        if dist < next_closest_dist:
-            next_closest_dist = dist
-    if next_closest_dist < prev_closest_dist and next_closest_dist < 20.0 and next_player["nodeInView"] == 1:
-        reward += 0.005
-        reward_info["closest_node"] = 0.005
+    # # # closest node reward
+    # prev_closest_dist = float('inf')
+    # next_closest_dist = float('inf')
+    # for node in step_info["nodes"]: 
+    #     node_pos = node["position"]
+    #     dist = ((node_pos["x"] - prev_player["position"]["x"]) ** 2 +
+    #         (node_pos["y"] - prev_player["position"]["y"]) ** 2 +
+    #         (node_pos["z"] - prev_player["position"]["z"]) ** 2) ** 0.5
+    #     if dist < prev_closest_dist:
+    #         prev_closest_dist = dist
+    # for node in next_step_info["nodes"]: 
+    #     node_pos = node["position"]
+    #     dist = ((node_pos["x"] - next_player["position"]["x"]) ** 2 +
+    #         (node_pos["y"] - next_player["position"]["y"]) ** 2 +
+    #         (node_pos["z"] - next_player["position"]["z"]) ** 2) ** 0.5
+    #     if dist < next_closest_dist:
+    #         next_closest_dist = dist
+    # if next_closest_dist < prev_closest_dist and next_closest_dist < 20.0 and next_player["nodeInView"] == 1:
+    #     reward += 0.001
+    #     reward_info["closest_node"] = 0.001
+    
     
     # swimming penalty
-    # if next_player["isSwimming"]:
-    #     reward -= 0.01
-    #     reward_info["swimming_penalty"] = -0.01
+    if next_player["isSwimming"]:
+        reward -= 0.001
+        reward_info["swimming_penalty"] = -0.001
 
     return reward, reward_info
 

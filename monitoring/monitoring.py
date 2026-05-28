@@ -41,7 +41,7 @@ class Training_Logger:
         
         with open(loss_log_file, "a") as f:
             for i, (t_loss, a_loss, c_loss, e_loss) in enumerate(zip(self.total_loss, self.actor_loss, self.critic_loss, self.entropy_loss)):
-                step_num = self.start_episode * Config.EPISODE_LENGTH + i // 4  * Config.CHUNK_LENGTH + i % 4 * Config.EPOCHS
+                step_num = self.start_episode * Config.EPISODE_LENGTH + i // Config.EPOCHS
                 f.write(f"Step {step_num} - Total Loss: {t_loss:.4f}, Actor Loss: {a_loss:.4f}, Critic Loss: {c_loss:.4f}, Entropy Loss: {e_loss:.4f}\n")
 
         # reset after logging
