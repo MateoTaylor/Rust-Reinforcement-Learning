@@ -40,10 +40,11 @@ def workflow(model=None, output_dir="backups/new", start_episode=0):
         
         hidden = agent.model.init_hidden()  # Initialize hidden state from model
         for step in range(Config.EPISODE_LENGTH):
+            start_hidden = hidden.clone()
             start_time = time.time()
             current_hidden = hidden
             # selected action, log probability over all actions, and value estimate from the agent
-            # pass in the current + hidden state of the LSTM
+            # pass in the current + hidden state of the GRU
             action, log_prob, value, hidden = agent.select_action(state, hidden)
 
             # next_state is a PIL image converted, done is a bool,
@@ -80,13 +81,13 @@ def workflow(model=None, output_dir="backups/new", start_episode=0):
                 hidden = agent.model.init_hidden()  # Initialize hidden state from model
                 
         env.pause()
-        if total_reward < 0.20:
-            # skip learning 50% of the time when there's no reward
-            if np.random.rand() < 0.50 and episode > Config.VALUE_HEAD_WARMUP_EPISODES:
-                episode -= 1
-                continue
+        # if total_reward < 0.20:
+        #     # skip learning 50% of the time when there's no reward
+        #     if np.random.rand() < 0.50 and episode > Config.VALUE_HEAD_WARMUP_EPISODES:
+        #         episode -= 1
+        #         continue
         
-        agent.learn(step_info, next_state, hidden, hidden, logger)
+        agent.learn(step_info, next_state, start_hidden, hidden, logger)
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
@@ -105,13 +106,13 @@ def workflow(model=None, output_dir="backups/new", start_episode=0):
 
 if __name__ == "__main__":
     print("Starting training in 2 seconds...")
-    model = Model()
-    checkpoint = torch.load("backups/5-26-Afternoon/model_episode_235.pth", map_location=Config.DEVICE)
+    model = Model().to(Config.DEVICE)
+    checkpoint = torch.load("backups/5-29-Evening/model_episode_185.pth", map_location=Config.DEVICE)
     # model.load_state_dict(checkpoint['model_state_dict'], strict=False)
     model.load_state_dict(checkpoint, strict=False)
     time.sleep(2)  # give user time to switch to the game window
     workflow(
         model=model,
-        output_dir="backups/5-26-Afternoon",
-        start_episode=176
+        output_dir="backups/5-29-Evening",
+        start_episode=188
         )

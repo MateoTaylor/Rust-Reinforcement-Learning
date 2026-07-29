@@ -16,15 +16,16 @@ class Algorithm:
             T_max=Config.VALUE_HEAD_WARMUP_EPISODES,
             eta_min=Config.TARGET_LEARNING_RATE
         )
+        self.scaler = torch.amp.GradScaler('cuda')
         self.gamma = Config.GAMMA
         self.gae_lambda = Config.LAMDA
         self.eps_clip = Config.EPS_CLIP
         self.entropy_coef = Config.ENTROPY
         self.device = Config.DEVICE
     
-    def select_action(self, state, hidden_state  ):
+    def select_action(self, state, hidden_state=None):
         """Wrapper to call model's select_action method."""
-        return self.model.select_action(state, hidden_state, stochastic=True)
+        return self.model.select_action(state, stochastic=True)
 
     def compute_gae(self, rewards, masks, values, next_value):
         """
@@ -41,10 +42,10 @@ class Algorithm:
             advantages[step] = gae
         return advantages
 
-    def learn(self, sample_data, next_state, hidden_state_in, hidden_state_out, logger):
+    def learn(self, sample_data, next_state, hidden_state_in=None, hidden_state_out=None, logger=None):
         # sample data contains tuples of (state, action, reward, log_prob, value, hidden_state, mask)
         # unpack sample data
-        states, actions, rewards, old_log_probs, values, hiddens, masks = zip(*sample_data)
+        states, actions, rewards, old_log_probs, values, _, masks = zip(*sample_data)
         
         # Create all tensors directly on GPU
         states = torch.stack(states).to(self.device)  # [seq_len, 3, 360, 640]
@@ -53,15 +54,10 @@ class Algorithm:
         old_log_probs = torch.stack(old_log_probs).to(self.device)  # [seq_len]
         values = torch.stack([v.squeeze() if torch.is_tensor(v) else torch.as_tensor(v) for v in values]).to(self.device)  # [seq_len]
         masks = torch.tensor(masks, dtype=torch.float32, device=self.device)  # [seq_len]
-
         with torch.no_grad():
-            # Evaluate next_state with final hidden state
+            # Evaluate next_state without hidden state; the transformer is stateless.
             next_state_tensor = next_state.detach().clone().to(self.device)
-            _, _, next_value, _ = self.model.evaluate(
-                next_state_tensor,
-                torch.zeros_like(actions[0]),
-                hidden_state_out
-            )
+            _, _, next_value, _ = self.model.evaluate(next_state_tensor, torch.zeros_like(actions[0]))
             next_value = next_value.squeeze()  # Keep on GPU
 
         # Compute advantages and returns on GPU
@@ -71,10 +67,10 @@ class Algorithm:
         # Normalize advantages
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
-        train_sequence_length = Config.TRAIN_SEQUENCE_LENGTH
+        train_sequence_length = Config.CHUNK_LENGTH
         if states.size(0) % train_sequence_length != 0:
             raise ValueError(
-                f"Chunk length {states.size(0)} must be divisible by TRAIN_SEQUENCE_LENGTH={train_sequence_length}"
+                f"Episode length {states.size(0)} must be divisible by CHUNK_LENGTH={train_sequence_length}"
             )
 
         batch_sequence_count = states.size(0) // train_sequence_length
@@ -85,52 +81,56 @@ class Algorithm:
         returns = returns.view(batch_sequence_count, train_sequence_length)
         train_policy = getattr(self.model, "policy_training_enabled", True)
 
-        # Extract the hidden states corresponding to the FIRST step of each sequence batch
-        hiddens_list = list(hiddens)
-        batch_hiddens = torch.cat([hiddens_list[i * train_sequence_length] for i in range(batch_sequence_count)], dim=1)
-
         # Optimize policy for K epochs
         for _ in range(Config.EPOCHS):
-            if train_policy:
-                log_probs, dist_entropy, state_values, _ = self.model.evaluate(states, actions, batch_hiddens.detach())
+            autocast_context = torch.autocast(device_type='cuda') if torch.cuda.is_available() else torch.enable_grad()
+            with autocast_context:
+                if train_policy:
+                    log_probs, dist_entropy, state_values, _ = self.model.evaluate(states, actions)
 
-                log_probs = log_probs.reshape(-1)
-                state_values = state_values.reshape(-1)
-                dist_entropy = dist_entropy.reshape(-1)
-                old_log_probs_gpu = old_log_probs.reshape(-1)
-                advantages_gpu = advantages.reshape(-1)
-                returns_gpu = returns.reshape(-1)
+                    log_probs = log_probs.reshape(-1)
+                    state_values = state_values.reshape(-1)
+                    state_values = state_values.squeeze(-1)
+                    dist_entropy = dist_entropy.reshape(-1)
+                    old_log_probs_gpu = old_log_probs.reshape(-1)
+                    advantages_gpu = advantages.reshape(-1)
+                    returns_gpu = returns.reshape(-1)
 
-                # Finding the ratio (pi_theta / pi_theta__old)
-                ratios = torch.exp(log_probs - old_log_probs_gpu.detach())
+                    # Finding the ratio (pi_theta / pi_theta__old)
+                    ratios = torch.exp(log_probs - old_log_probs_gpu.detach())
 
-                # Finding Surrogate Loss
-                surr1 = ratios * advantages_gpu
-                surr2 = torch.clamp(ratios, 1 - self.eps_clip, 1 + self.eps_clip) * advantages_gpu
+                    # Finding Surrogate Loss
+                    surr1 = ratios * advantages_gpu
+                    surr2 = torch.clamp(ratios, 1 - self.eps_clip, 1 + self.eps_clip) * advantages_gpu
 
-                actor_loss = -torch.min(surr1, surr2).mean()
-                critic_loss = 0.5 * (returns_gpu - state_values).pow(2).mean()
-                entropy_loss = -self.entropy_coef * dist_entropy.mean()
+                    actor_loss = -torch.min(surr1, surr2).mean()
+                    critic_loss = 0.5 * (returns_gpu - state_values).pow(2).mean()
+                    entropy_loss = -self.entropy_coef * dist_entropy.mean()
 
-                loss = actor_loss + critic_loss + entropy_loss
-            else:
-                _, state_values, _ = self.model.forward(states, batch_hiddens.detach())
-                state_values = state_values.reshape(-1)
-                returns_gpu = returns.reshape(-1)
+                    loss = actor_loss + critic_loss + entropy_loss
+                else:
+                    _, state_values, _ = self.model.forward(states)
+                    state_values = state_values.reshape(-1)
+                    returns_gpu = returns.reshape(-1)
 
-                actor_loss = torch.zeros((), device=self.device)
-                entropy_loss = torch.zeros((), device=self.device)
-                critic_loss = 0.5 * (returns_gpu - state_values).pow(2).mean()
-                loss = critic_loss
+                    actor_loss = torch.zeros((), device=self.device)
+                    entropy_loss = torch.zeros((), device=self.device)
+                    critic_loss = 0.5 * (returns_gpu - state_values).pow(2).mean()
+                    loss = critic_loss
 
             if logger is not None:
                 logger.log_loss(loss.item(), actor_loss.item(), critic_loss.item(), entropy_loss.item())
             # take gradient step
             
             self.optimizer.zero_grad()
-            loss.backward()
-            nn.utils.clip_grad_norm_(self.model.parameters(), Config.GRADIENT_CLIP)
-            self.optimizer.step()
+            self.scaler.scale(loss).backward()
+            
+            if Config.GRADIENT_CLIP > 0:
+                self.scaler.unscale_(self.optimizer)
+                nn.utils.clip_grad_norm_(self.model.parameters(), Config.GRADIENT_CLIP)
+                
+            self.scaler.step(self.optimizer)
+            self.scaler.update()
         
         return hidden_state_out
             

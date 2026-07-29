@@ -21,6 +21,8 @@ class EnvironmentControl:
     def reset(self):
         send_message.reset_env()
         time.sleep(2) # wait for environment to reset
+        screen_width, screen_height = self.sct.monitors[1]['width'], self.sct.monitors[1]['height']
+        pdi.moveTo(screen_width // 2, screen_height // 2)
         send_message.give_pickaxe()
         time.sleep(3)
         pdi.press("3", duration=1) # select pickaxe after respawn
@@ -43,12 +45,11 @@ class EnvironmentControl:
 
         # Match pretraining pipeline: BGRA → BGR → RGB
         screenshot = cv2.cvtColor(screenshot, cv2.COLOR_BGRA2RGB)
-        screenshot = cv2.resize(screenshot, (640, 640))  # resize to 640x640
+        screenshot = cv2.resize(screenshot, (320, 320))  # resize to 320x320
         
         # Convert to tensor - transforms.ToTensor() does permute + divide by 255
         transform = transforms.ToTensor()
         screenshot_tensor = transform(screenshot)  # Now (C, H, W) and normalized
-        # now downsize to 320x320
         game_state = send_message.get_state()
         
         return screenshot_tensor, game_state
@@ -66,7 +67,7 @@ class EnvironmentControl:
         else: pdi.keyUp('w')
         if action[1] == 1: pdi.mouseDown()
         else: pdi.mouseUp()
-        mouse_movement_conversion = {1: -150, 2: 150, 0: 0} # convert from binned movement back to actual movement
+        mouse_movement_conversion = {1: -100, 2: 100, 0: 0} # convert from binned movement back to actual movement
         mouse_dx = mouse_movement_conversion[action[2]]
         mouse_dy = mouse_movement_conversion[action[3]]
         pdi.moveRel(mouse_dx, mouse_dy, relative=True)

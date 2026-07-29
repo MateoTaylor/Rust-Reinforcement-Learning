@@ -13,8 +13,8 @@ def calculate_reward(step_info, next_step_info):
     
     # looking at node reward
     if next_player["nodeInView"] == 1:
-        reward += 0.001
-        reward_info["looking_at_node"] = 0.001
+        reward += 0.002
+        reward_info["looking_at_node"] = 0.0015
 
     # resource reward
     prev_resources = 0

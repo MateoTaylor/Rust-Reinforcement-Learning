@@ -7,12 +7,13 @@ import torch
 
 
 class Config:
-    FEATURE_DIM = [3, 640, 640] # FOR RESNET INPUT
+    FEATURE_DIM = [3, 320, 320]
     ACTION_DIM = [2, 2, 3, 3]
+    CONTEXT_FRAMES = 5
+    CHUNK_SIZE = 10
     
-    INTERVAL = 0.20  # 200 ms per step (5 FPS)
-    TRAIN_SEQUENCE_LENGTH = 8  # batch learning slices each chunk into 8-frame sequences
-    EPISODE_LENGTH = 320  # 2.5~ minutes
+    INTERVAL = 0.25  # 200 ms per step (5 FPS)
+    EPISODE_LENGTH = 640  # 2.5~ minutes
     CHUNK_LENGTH = 80  # 80 frames per chunk
 
     reward_info = {
@@ -28,14 +29,14 @@ class Config:
     START_LEARNING_RATE = 1e-4
     TARGET_LEARNING_RATE = 5e-5
     EPISODES = 2000
-    VALUE_HEAD_WARMUP_EPISODES = 5
+    VALUE_HEAD_WARMUP_EPISODES = 75
 
-    LSTM_HIDDEN_SIZE = 256
+    LSTM_HIDDEN_SIZE = 512
 
     GAMMA = 0.99
     EPS_CLIP = 0.2    
     LAMDA = 0.95
-    ENTROPY = 0.01
+    ENTROPY = 0.05
 
     GRADIENT_CLIP = 0.5
 
